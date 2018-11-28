@@ -168,3 +168,94 @@ Codes:
 | 0 | normal exit |
 | 1 | invalid or missing parameters  |
 | 2 | exception encountered |
+
+
+In the source code, the core functionality is all packaged at even finer
+granularity into the class `PartitionManager` (file `PartitionManagement.cs`).Indexes, check constraints, fkeys, etc. can
+all be cloned from a partition as separate operations by an alternative driver
+program if desired.
+
+Also, when using the option to script
+commands to a file, the utility will append to an existing file, or create it
+new if it doesn't exist.
+
+Switching a partition in or out of a table
+requires that a staging table be created in the same `filegroup`
+as the partition, with identical index structures, column characteristics, and
+constraints as the partitioned table. When switching data in to a partitioned table, the staging table must
+also have and additional check constraint that restricts the value of the
+partitioning key to match the target partition of the partitioned table.
+
+`ManagePartition.exe` is designed to fully
+automate the creation of such a staging table when needed - such as during
+daily or monthly partition management cycles, as an alternative to maintaining
+complex TSQL scripts to generate staging tables matching partitions. `ManagePartition`
+determines the structures to build based on the partitioned table structures in
+place and a data value of the partitioning key (or the partition number)
+identifying the partition of interest.
+So even if indexes or column definitions on partition tables change,
+management scripts that rely on the `ManagePartition`
+need not be changed because staging table structure is determined at execution
+time. Also the `ManagePartition`
+command can be easily integrated with parameter-driven scripts.
+
+`ManagePartition` offers flexibility
+in index building to match the data loading style that you prefer to use when
+loading a staging table with new data. 
+You can choose to create a staging table with or without indexes, or with
+only a clustered index, as an alternative to a fully indexed table since bulk
+loads may be much faster using that technique. 
+Then, when the data is loaded, you can run `ManagePartition`
+again invoking the command to build all indexes that were skipped initially.
+In SQL Server 2012, `Columnstore`
+indexes cannot be present when loading data, so supporting the decoupling of
+index build from staging table creation is critical.
+
+With the latest version of `ManagePartition`, you have the option to generate TSQL
+scripts for the intended operations, saving those scripts to a file, and
+running the scripts later as part of a SQLCMD job or SSIS package - rather than
+executing the operations against the server when running the tool.
+
+Some users prefer to disable Check
+Constraints and Foreign Key constraints during the data load, and re-enable
+them later. In some cases this may boost data load performance. While `ManagePartition`
+does not offer this option built-in, it is easy to accommodate this within your
+overall data load process:
+ * After creating the staging table using `ManagePartition`
+(with or without indexes), prior to data loading, you may disable all Check and
+Foreign Key constraints using:
+```sql
+ALTER TABLE table_name NOCHECK CONSTRAINT ALL;
+```
+Then, after completing data load operations, re-enable all FOREIGN KEY and
+CHECK constraints, and validate existing rows using:
+```sql
+ALTER TABLE table_name WITH
+CHECK CHECK CONSTRAINT ALL;
+```
+
+# Change Log
+
+## Enhancements from v2
+
+1. Support for SQL Server 2012 including `Columnstore` indexes
+2. Support for generating TSQL scripts for the intended operations
+3. Compatible with all locales and global date / numeric formats
+4. Fixed problems when partitioning column name contained spaces or other reserved characters
+5. Fixed problems with tables involving Large Text or Large Binary data types
+6. Added support for Binary partition columns
+
+## Enhancements from v1
+
+1. Support for automatically handling partition-aligned indexed views in SQL Server 2008
+2. Handles sparse columns and filtered indexes in SQL Server 2008
+3. Accommodates the new date and time data types in SQL Server 2008
+4. Clustered index is always created first
+5. New command `CreateStagingClusteredIndex` supports creating only the Clustered Index to optimize a load of presorted data additional indexes can be automatically built later using `IndexStaging`
+6. Support for `Nullable` partitioning keys
+7. Support for compressed tables and indexes in SQL Server 2008
+8. Default constraints are inherited from the partitioned table to assist with data loading into staging tables
+9. Connection Timeout eliminated
+
+For questions or comments, email [stuarto@microsoft.com](mailto:stuarto@microsoft.com), or
+discuss/submit feedback at http://sqlpartitionmgmt.codeplex.com/
